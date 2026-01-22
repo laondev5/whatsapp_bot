@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: whatsapp-bot-sendbit
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: QUIDAX_SECRET_KEY
+        sync: false
+      - key: SENDBIT_CLIENT_ID
+        sync: false
+      - key: SENDBIT_CLIENT_SECRET
+        sync: false
+      - key: SENDBIT_BASE_URL
+        value: https://sendbitdevenv.otybtechnologies.com/api/integrations/v1
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: WEBHOOK_SIGNING_SECRET
+        sync: false
