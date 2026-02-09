@@ -40,10 +40,6 @@ export class GeminiService {
         Analyze the following user input for a crypto bot.
         Determine if it matches one of these specific commands:
         - "create_wallet" (keywords: create, new wallet, sign up)
-        - "view_balance" (keywords: balance, how much i have)
-        - "send_crypto" (keywords: send, withdraw, transfer)
-        - "receive_crypto" (keywords: receive, deposit, address)
-        - "swap_crypto" (keywords: swap, exchange, convert)
         - "update_account" (keywords: update profile, change details)
         - "check_prices" (keywords: price, rate, market)
         - "view_history" (keywords: history, transactions)

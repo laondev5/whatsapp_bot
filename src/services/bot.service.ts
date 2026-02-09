@@ -1,15 +1,13 @@
 import { WhatsAppService } from './whatsapp.service';
 import { CryptoService } from './crypto.service';
+import { GoogleSheetsService } from './google-sheets.service';
 
 interface UserState {
     step: 'MAIN_MENU' |
     'CREATE_ACCOUNT_EMAIL' | 'CREATE_ACCOUNT_FIRSTNAME' | 'CREATE_ACCOUNT_LASTNAME' |
-    'SEND_AMOUNT' | 'SEND_ADDRESS' |
-    'SWAP_FROM_CURRENCY' | 'SWAP_TO_CURRENCY' | 'SWAP_AMOUNT' | 'SWAP_CONFIRM' |
     'WITHDRAW_CURRENCY' | 'WITHDRAW_AMOUNT' | 'WITHDRAW_ADDRESS' | 'WITHDRAW_NETWORK' | 'WITHDRAW_CONFIRM' |
-    'SELECT_PAYMENT_ADDRESS_CURRENCY' | 'SELECT_INDIVIDUAL_WALLET_CURRENCY' |
-    'RECEIVE_CRYPTO_CURRENCY' | 'HISTORY_MENU' |
-    'SELL_CURRENCY' | 'SELL_AMOUNT' | 'SELL_CONFIRM' | 'SELL_PAYMENT_EVIDENCE' |
+    'HISTORY_MENU' |
+    'SELL_CURRENCY' | 'SELL_AMOUNT' | 'SELL_CONFIRM' | 'SELL_PAYMENT_EVIDENCE' | 'SELL_ACCOUNT_NUMBER' | 'SELL_ACCOUNT_NAME' | 'SELL_BANK_NAME' |
     'TEST_SELL_AMOUNT' | 'TEST_SELL_ADDRESS' | 'TEST_SELL_CONFIRM';
     data: any;
 }
@@ -19,6 +17,13 @@ const userStates: Record<string, UserState> = {};
 export class BotService {
     static async handleIncomingMessage(from: string, messageBody: any) {
         let text = messageBody.text?.body;
+        let mediaId = null;
+
+        if (messageBody.image) {
+            mediaId = messageBody.image.id;
+            text = 'IMAGE_UPLOADED';
+        }
+
         if (messageBody.interactive) {
             if (messageBody.interactive.type === 'button_reply') {
                 text = messageBody.interactive.button_reply.id;
@@ -28,9 +33,10 @@ export class BotService {
         }
 
         const input = text?.trim();
-        if (!input) return;
+        if (!input && !mediaId) return;
 
         let state = userStates[from] || { step: 'MAIN_MENU', data: {} };
+        if (mediaId) state.data.lastMediaId = mediaId;
 
         // Global Cancel Handler
         if (input.toLowerCase() === 'cancel' || input.toLowerCase() === 'menu') {
@@ -56,24 +62,7 @@ export class BotService {
             case 'CREATE_ACCOUNT_LASTNAME':
                 await this.handleCreateAccountLastName(from, input, state);
                 break;
-            case 'SEND_AMOUNT':
-                await this.handleSendAmount(from, input, state);
-                break;
-            case 'SEND_ADDRESS':
-                await this.handleSendAddress(from, input, state);
-                break;
-            case 'SWAP_FROM_CURRENCY':
-                await this.handleSwapFromCurrency(from, input, state);
-                break;
-            case 'SWAP_TO_CURRENCY':
-                await this.handleSwapToCurrency(from, input, state);
-                break;
-            case 'SWAP_AMOUNT':
-                await this.handleSwapAmount(from, input, state);
-                break;
-            case 'SWAP_CONFIRM':
-                await this.handleSwapConfirm(from, input, state);
-                break;
+
             case 'WITHDRAW_CURRENCY':
                 await this.handleWithdrawCurrency(from, input, state);
                 break;
@@ -104,6 +93,15 @@ export class BotService {
             case 'SELL_PAYMENT_EVIDENCE':
                 await this.handleSellPaymentEvidence(from, input, state);
                 break;
+            case 'SELL_ACCOUNT_NUMBER':
+                await this.handleSellAccountNumber(from, input, state);
+                break;
+            case 'SELL_ACCOUNT_NAME':
+                await this.handleSellAccountName(from, input, state);
+                break;
+            case 'SELL_BANK_NAME':
+                await this.handleSellBankName(from, input, state);
+                break;
             case 'TEST_SELL_AMOUNT':
                 await this.handleTestSellAmount(from, input, state);
                 break;
@@ -120,28 +118,16 @@ export class BotService {
     static async sendMainMenu(to: string) {
         const isRegistered = CryptoService.isUserRegistered(to);
         const menuText = isRegistered
-            ? `Welcome back! 🤖\n\n1️⃣ View Balances\n2️⃣ View Coin Balance\n3️⃣ Send Crypto\n4️⃣ Receive Crypto\n5️⃣ Create Address\n6️⃣ Swap Crypto\n7️⃣ Sell Crypto\n8️⃣ Help\n9️⃣ History\n🔟 Cancel\n\n_Reply with a number or select below._`
+            ? `Welcome back! 🤖\n\n1️⃣ Sell Crypto\n2️⃣ Help\n3️⃣ History\n4️⃣ Cancel\n\n_Reply with a number or select below._`
             : `Hello there! 👋 Welcome to CryptoBot!\n\nI can help you create a wallet, check prices, and more.\n\n1️⃣ Create Wallet\n2️⃣ Get Rate\n3️⃣ Check Prices\n4️⃣ Guide\n\n_Reply with a number or select below._`;
 
         let sections = [];
 
         if (isRegistered) {
-            // MAX 10 ROWS ALLOWED - Currently 10 rows total
             sections = [
-                {
-                    title: 'Wallet',
-                    rows: [
-                        { id: 'view_balance', title: 'View Balances', description: 'Check all balances' },
-                        { id: 'view_individual_wallet', title: 'View Coin Balance', description: 'Check specifics (BTC/ETH/USDT)' }
-                    ]
-                },
                 {
                     title: 'Actions',
                     rows: [
-                        { id: 'send_crypto', title: 'Send Crypto', description: 'Withdraw funds' },
-                        { id: 'receive_crypto', title: 'Receive Crypto', description: 'Get payment address' },
-                        { id: 'create_payment_address', title: 'Create Address', description: 'Generate new address' },
-                        { id: 'swap_crypto', title: 'Swap Crypto', description: 'Instant Swap' },
                         { id: 'sell_crypto', title: 'Sell Crypto', description: 'Sell your crypto' }
                     ]
                 },
@@ -184,16 +170,10 @@ export class BotService {
         // Numeric Mapping
         if (isRegistered) {
             const map: Record<string, string> = {
-                '1': 'view_balance',
-                '2': 'view_individual_wallet',
-                '3': 'send_crypto',
-                '4': 'receive_crypto',
-                '5': 'create_payment_address',
-                '6': 'swap_crypto',
-                '7': 'sell_crypto',
-                '8': 'view_help',
-                '9': 'view_history',
-                '10': 'cancel',
+                '1': 'sell_crypto',
+                '2': 'view_help',
+                '3': 'view_history',
+                '4': 'cancel',
                 '0': 'cancel'
             };
             if (map[command]) command = map[command];
@@ -222,42 +202,7 @@ export class BotService {
             userStates[from] = state;
             await WhatsAppService.sendMessage(from, '🔄 Update Mode\nPlease enter your *Email Address*:');
         }
-        else if (command === 'view_balance') {
-            const balance = await CryptoService.getBalance(from);
-            if (!balance) return WhatsAppService.sendMessage(from, '❌ Fetch failed.');
-            const text = `💰 *Your Balances:*\nBTC: ${balance.BTC}\nETH: ${balance.ETH}\nUSDT: ${balance.USDT}`;
-            await WhatsAppService.sendMessage(from, text);
-        }
-        else if (command === 'view_individual_wallet') {
-            state.step = 'SELECT_INDIVIDUAL_WALLET_CURRENCY';
-            userStates[from] = state;
-            await WhatsAppService.sendMessage(from, 'Which wallet? (Reply "BTC", "ETH", "USDT")');
-        }
-        else if (command === 'receive_crypto') {
-            // New specific receive flow
-            state.step = 'RECEIVE_CRYPTO_CURRENCY';
-            userStates[from] = state;
-            await WhatsAppService.sendMessage(from, '📥 Which currency would you like to receive? (Reply "BTC", "USDT" or "ETH")');
-        }
-        else if (command === 'create_payment_address') {
-            state.step = 'SELECT_PAYMENT_ADDRESS_CURRENCY';
-            userStates[from] = state;
-            await WhatsAppService.sendMessage(from, 'Which currency to create address for? (Reply "BTC", "USDT" or "ETH")');
-        }
-        else if (command === 'send_crypto') {
-            state.step = 'WITHDRAW_CURRENCY';
-            userStates[from] = state;
-            await WhatsAppService.sendListMessage(from, 'Withdrawal', 'Select Currency to Withdraw:', 'Select Currency', [
-                { title: 'Currencies', rows: [{ id: 'BTC', title: 'Bitcoin (BTC)' }, { id: 'USDT', title: 'Tether (USDT)' }, { id: 'ETH', title: 'Ethereum (ETH)' }] }
-            ]);
-        }
-        else if (command === 'swap_crypto') {
-            state.step = 'SWAP_FROM_CURRENCY';
-            userStates[from] = state;
-            await WhatsAppService.sendListMessage(from, 'Instant Swap', 'Select Currency to Swap FROM:', 'Select Currency', [
-                { title: 'Currencies', rows: [{ id: 'BTC', title: 'Bitcoin (BTC)' }, { id: 'USDT', title: 'Tether (USDT)' }, { id: 'ETH', title: 'Ethereum (ETH)' }] }
-            ]);
-        }
+
         else if (command === 'sell_crypto') {
             state.step = 'SELL_CURRENCY';
             userStates[from] = state;
@@ -269,7 +214,7 @@ export class BotService {
             await WhatsAppService.sendMessage(from, '📈 *Current Prices:*\nBTC: $50,000\nETH: $3,000\nUSDT: $1.00');
         }
         else if (command === 'view_help' || command === 'view_guide') {
-            await WhatsAppService.sendMessage(from, 'ℹ️ *Guide:*\n\n1. Use *View Balances* to check funds.\n2. *Receive Crypto* gets you an address to deposit.\n3. *Send Crypto* to withdraw funds to external wallet.\n4. *Swap Crypto* to convert between BTC and USDT.\n5. *Sell Crypto* to sell your assets for fiat.\n6. *History* to view past transactions.');
+            await WhatsAppService.sendMessage(from, 'ℹ️ *Guide:*\n\n1. *Sell Crypto* to sell your assets for fiat.\n2. *History* to view past transactions.');
         }
         else if (command === 'view_history') {
             state.step = 'HISTORY_MENU';
@@ -277,7 +222,6 @@ export class BotService {
             await WhatsAppService.sendListMessage(from, 'Transaction History', 'Select History Type:', 'View History', [
                 {
                     title: 'Types', rows: [
-                        { id: 'swaps', title: 'Swap Transactions' },
                         { id: 'withdrawals', title: 'Withdrawals' },
                         { id: 'deposits', title: 'Deposits' }
                     ]
@@ -403,12 +347,65 @@ export class BotService {
     }
 
     private static async handleSellPaymentEvidence(from: string, input: string, state: UserState) {
-        // Here we would handle image processing if Twilio/WhatsApp API sends media urls.
-        // For this text-based bot logic, we assume user types 'done' or message contains text.
-        // If actual image handling is needed, `handleIncomingMessage` needs media parsing.
+        // Handle image or 'done' text
+        if (input === 'IMAGE_UPLOADED' || input.toLowerCase() === 'done') {
+            state.step = 'SELL_ACCOUNT_NUMBER';
+            userStates[from] = state;
+            await WhatsAppService.sendMessage(from, '✅ Evidence noted. Now, please provide your *Account Number* to receive payment:');
+        } else {
+            await WhatsAppService.sendMessage(from, 'Please upload payment evidence (screenshot) or type "done" after transfer.');
+        }
+    }
 
-        // Simulating success
-        await WhatsAppService.sendMessage(from, `✅ *Evidence Received!*\n\nVerfication in progress. Your account will be credited shortly.\n\nThank you for using Sendbit!`);
+    private static async handleSellAccountNumber(from: string, input: string, state: UserState) {
+        if (!/^\d+$/.test(input) || input.length < 5) {
+            return WhatsAppService.sendMessage(from, '❌ Invalid account number. Please provide a numeric account number:');
+        }
+        state.data.accountNumber = input;
+        state.step = 'SELL_ACCOUNT_NAME';
+        userStates[from] = state;
+        await WhatsAppService.sendMessage(from, 'Enter your *Account Name* (The name should be exactly how it is in the account):');
+    }
+
+    private static async handleSellAccountName(from: string, input: string, state: UserState) {
+        if (input.length < 2) return WhatsAppService.sendMessage(from, '❌ Please enter a valid name.');
+        state.data.accountName = input;
+        state.step = 'SELL_BANK_NAME';
+        userStates[from] = state;
+        await WhatsAppService.sendMessage(from, 'Enter your *Bank Name*:');
+    }
+
+    private static async handleSellBankName(from: string, input: string, state: UserState) {
+        if (input.length < 2) return WhatsAppService.sendMessage(from, '❌ Please enter a valid bank name.');
+        state.data.bankName = input;
+
+        await WhatsAppService.sendMessage(from, `⏳ Processing your request...`);
+
+        // Fetch Media URL if exists
+        let mediaUrl = 'No image provided';
+        if (state.data.lastMediaId) {
+            const url = await WhatsAppService.getMediaUrl(state.data.lastMediaId);
+            if (url) mediaUrl = url;
+        }
+
+        // Save to Google Sheets
+        const transactionData = [
+            new Date().toLocaleString(),
+            from,
+            state.data.sellAmount,
+            state.data.sellCurrency,
+            `$${state.data.totalValueUsd.toFixed(2)}`,
+            `$${state.data.totalCharge.toFixed(2)}`,
+            state.data.accountNumber,
+            state.data.accountName,
+            state.data.bankName,
+            mediaUrl,
+            'Pending Verification'
+        ];
+
+        await GoogleSheetsService.appendTransaction(transactionData);
+
+        await WhatsAppService.sendMessage(from, `✅ *Details Received!*\n\nThe amount will be credited to you bank account within 24 hour.\n\nThank you for using Sendbit!`);
         await this.sendMainMenu(from);
     }
 
@@ -444,170 +441,7 @@ export class BotService {
         }
     }
 
-    private static async handleSelectPaymentAddressCurrency(from: string, input: string, state: UserState) {
-        const currency = input.toLowerCase();
-        let network = 'bitcoin';
-        if (currency === 'usdt') network = 'trc20';
-        else if (currency === 'btc') network = 'bitcoin';
-        else if (currency === 'eth') network = 'ethereum';
-        else {
-            return WhatsAppService.sendMessage(from, '❌ Invalid currency. Reply "BTC", "USDT", "ETH" or "cancel".');
-        }
 
-        await WhatsAppService.sendMessage(from, `⏳ Generating ${currency.toUpperCase()} address...`);
-        try {
-            const res = await CryptoService.createAddress(from, currency, network);
-            if (res && res.data && res.data.address) {
-                await WhatsAppService.sendMessage(from, `✅ New ${currency.toUpperCase()} Address:\n${res.data.address}`);
-            } else {
-                await WhatsAppService.sendMessage(from, '❌ Failed to generate address (might already exist).');
-            }
-        } catch (e: any) {
-            await WhatsAppService.sendMessage(from, `❌ Error: ${e.message}`);
-        }
-        await this.sendMainMenu(from);
-    }
-
-    private static async handleReceiveCryptoCurrency(from: string, input: string, state: UserState) {
-        const currency = input.toLowerCase();
-        if (!['btc', 'usdt', 'eth'].includes(currency)) {
-            return WhatsAppService.sendMessage(from, '❌ Supported: BTC, USDT, ETH. Try again or "cancel".');
-        }
-
-        await WhatsAppService.sendMessage(from, `⏳ Fetching ${currency.toUpperCase()} address...`);
-        try {
-            const addrObj = await CryptoService.getAddress(from, currency);
-            if (addrObj && addrObj.address) {
-                await WhatsAppService.sendMessage(from, `📥 *Your ${currency.toUpperCase()} Address:*\n\n${addrObj.address}`);
-            } else {
-                await WhatsAppService.sendMessage(from, `❌ No address found for ${currency.toUpperCase()}.\nPlease use "Create Address" option first.`);
-            }
-        } catch (err: any) {
-            await WhatsAppService.sendMessage(from, '❌ Error fetching address.');
-        }
-        await this.sendMainMenu(from);
-    }
-
-    private static async handleSelectIndividualWalletCurrency(from: string, input: string, state: UserState) {
-        const currency = input.toLowerCase();
-        if (!['btc', 'eth', 'usdt'].includes(currency)) {
-            return WhatsAppService.sendMessage(from, '❌ Supported: BTC, ETH, USDT. Try again or "cancel".');
-        }
-
-        try {
-            const balances = await CryptoService.getBalance(from);
-            if (balances) {
-                const val = (balances as any)[currency.toUpperCase()] || '0.0';
-                await WhatsAppService.sendMessage(from, `💰 *${currency.toUpperCase()} Wallet*\nBalance: ${val}`);
-            } else {
-                await WhatsAppService.sendMessage(from, '❌ Could not load wallet.');
-            }
-        } catch (e) {
-            await WhatsAppService.sendMessage(from, '❌ Error loading wallet.');
-        }
-        await this.sendMainMenu(from);
-    }
-
-    private static async handleSendAmount(from: string, input: string, state: UserState) {
-        const amount = parseFloat(input);
-        if (isNaN(amount) || amount <= 0) return WhatsAppService.sendMessage(from, '❌ Invalid amount.');
-        state.data.amount = amount;
-        state.step = 'SEND_ADDRESS';
-        userStates[from] = state;
-        await WhatsAppService.sendMessage(from, 'Enter recipient address:');
-    }
-
-    private static async handleSendAddress(from: string, input: string, state: UserState) {
-        const address = input;
-        const result = await CryptoService.sendCrypto(from, state.data.currency, state.data.amount, address);
-        await WhatsAppService.sendMessage(from, result);
-        await this.sendMainMenu(from);
-    }
-
-    private static async handleSwapFromCurrency(from: string, input: string, state: UserState) {
-        const currency = input.toUpperCase();
-        if (!['BTC', 'USDT', 'ETH'].includes(currency)) return WhatsAppService.sendMessage(from, '❌ Invalid. Reply BTC, USDT, or ETH.');
-
-        state.data.from = currency;
-        // Default target currency (simple logic found in many apps: if from BTC, to USDT, and vice versa)
-        // But let's ask for TO currency to be explicit, or just auto-set.
-        // Let's ask.
-        state.step = 'SWAP_TO_CURRENCY';
-        userStates[from] = state;
-
-        await WhatsAppService.sendListMessage(from, 'Instant Swap', `Swapping FROM ${currency}. Select TO currency:`, 'Select Currency', [
-            { title: 'Currencies', rows: [{ id: 'BTC', title: 'Bitcoin (BTC)' }, { id: 'USDT', title: 'Tether (USDT)' }, { id: 'ETH', title: 'Ethereum (ETH)' }] }
-        ]);
-    }
-
-    private static async handleSwapToCurrency(from: string, input: string, state: UserState) {
-        const currency = input.toUpperCase();
-        if (!['BTC', 'USDT', 'ETH'].includes(currency)) return WhatsAppService.sendMessage(from, '❌ Invalid. Reply BTC, USDT, or ETH.');
-        if (currency === state.data.from) return WhatsAppService.sendMessage(from, '❌ Cannot swap to same currency. Choose different.');
-
-        state.data.to = currency;
-        state.step = 'SWAP_AMOUNT';
-        userStates[from] = state;
-
-        await WhatsAppService.sendMessage(from, `Enter amount of ${state.data.from} to swap to ${state.data.to}:`);
-    }
-
-    private static async handleSwapAmount(from: string, input: string, state: UserState) {
-        const amount = parseFloat(input);
-        if (isNaN(amount) || amount <= 0) return WhatsAppService.sendMessage(from, '❌ Invalid amount.');
-
-        state.data.amount = input; // Keep as string for API consistency
-        await WhatsAppService.sendMessage(from, '⏳ Generating quote...');
-
-        try {
-            const quote = await CryptoService.createSwapQuote(from, state.data.from, state.data.to, state.data.amount);
-            if (quote && quote.success && quote.data) {
-                // Store quote ID
-                state.data.quoteId = quote.data.id;
-                state.data.quotation = quote.data; // Store full quote for display
-
-                // Display Quote
-                const receivedAmount = quote.data.to_amount;
-                const rate = quote.data.exchange_rate; // Assuming field name
-                const msg = `🧾 *Swap Quote*\n\nFrom: ${state.data.amount} ${state.data.from}\nTo: ${receivedAmount} ${state.data.to}\n\n_Valid for 15s_`;
-
-                state.step = 'SWAP_CONFIRM';
-                userStates[from] = state;
-
-                // Send Interactive Button to Confirm
-                await WhatsAppService.sendInteractiveMessage(from, msg, [
-                    { id: 'confirm_swap', title: 'Confirm Swap' },
-                    { id: 'cancel', title: 'Cancel' }
-                ]);
-            } else {
-                await WhatsAppService.sendMessage(from, `❌ Quote Failed: ${quote?.message || 'Unknown error'}`);
-                await this.sendMainMenu(from);
-            }
-        } catch (e: any) {
-            await WhatsAppService.sendMessage(from, `❌ Error: ${e.message}`);
-            await this.sendMainMenu(from);
-        }
-    }
-
-    private static async handleSwapConfirm(from: string, input: string, state: UserState) {
-        if (input.toLowerCase() !== 'confirm_swap') {
-            await WhatsAppService.sendMessage(from, '❌ Swap cancelled.');
-            return this.sendMainMenu(from);
-        }
-
-        await WhatsAppService.sendMessage(from, '⏳ Confirming swap...');
-        try {
-            const res = await CryptoService.confirmSwap(from, state.data.quoteId);
-            if (res && res.success) {
-                await WhatsAppService.sendMessage(from, '✅ Swap Successful! Check your balances.');
-            } else {
-                await WhatsAppService.sendMessage(from, `❌ Swap Confirmation Failed: ${res?.message || 'Expired?'}`);
-            }
-        } catch (e: any) {
-            await WhatsAppService.sendMessage(from, `❌ Error: ${e.message}`);
-        }
-        await this.sendMainMenu(from);
-    }
 
     // --- WITHDRAWAL HANDLERS ---
 
@@ -695,17 +529,7 @@ export class BotService {
             let data: any[] = [];
             let msg = '';
 
-            if (type.includes('swap')) {
-                const res = await CryptoService.getSwapHistory(from);
-                data = res && res.success ? res.data : [];
-                msg = `🔄 *Swap History:*\n\n`;
-                if (!data.length) msg += 'No swaps found.';
-                else {
-                    data.slice(0, 5).forEach((item: any) => {
-                        msg += `- ${item.from_amount} ${item.from_currency} ➡️ ${item.to_amount} ${item.to_currency} (${item.status})\n`;
-                    });
-                }
-            } else if (type.includes('withdraw')) {
+            if (type.includes('withdraw')) {
                 const res = await CryptoService.getWithdrawals(from);
                 data = res && res.success ? res.data : [];
                 msg = `📤 *Withdrawal History:*\n\n`;

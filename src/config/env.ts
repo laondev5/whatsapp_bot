@@ -11,4 +11,7 @@ export const config = {
     sendbitClientSecret: process.env.SENDBIT_CLIENT_SECRET,
     sendbitBaseUrl: process.env.SENDBIT_BASE_URL || 'https://sendbitdevenv.otybtechnologies.com/api/integrations/v1',
     webhookSigningSecret: process.env.WEBHOOK_SIGNING_SECRET,
+    googleSheetId: process.env.GOOGLE_SHEET_ID,
+    googleServiceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    googlePrivateKey: process.env.GOOGLE_PRIVATE_KEY,
 };

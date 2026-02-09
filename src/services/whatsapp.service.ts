@@ -101,4 +101,22 @@ export class WhatsAppService {
             console.error('Error sending list msg:', error.response?.data || error.message);
         }
     }
+    static async getMediaUrl(mediaId: string): Promise<string | null> {
+        try {
+            if (!config.phoneNumberId || !config.whatsappToken) return null;
+
+            const response = await axios.get(
+                `https://graph.facebook.com/v17.0/${mediaId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${config.whatsappToken}`,
+                    },
+                }
+            );
+            return response.data.url;
+        } catch (error: any) {
+            console.error('Error fetching media URL:', error.response?.data || error.message);
+            return null;
+        }
+    }
 }
