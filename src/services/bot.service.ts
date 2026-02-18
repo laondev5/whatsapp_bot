@@ -1,6 +1,7 @@
 import { WhatsAppService } from './whatsapp.service';
 import { CryptoService } from './crypto.service';
 import { GoogleSheetsService } from './google-sheets.service';
+import { sendbitService } from './sendbit.service';
 
 interface UserState {
     step: 'MAIN_MENU' |
@@ -327,19 +328,29 @@ export class BotService {
             return this.sendMainMenu(from);
         }
 
-        // Display Wallet for payment
-        // In a real app, we'd generate a unique address or providing a pool address.
-        // Using static addresses for demo.
+        // Fetch real wallet address from SendBit API
+        await WhatsAppService.sendMessage(from, '⏳ Fetching deposit address...');
+
         let walletAddress = '';
-        if (state.data.sellCurrency === 'BTC') walletAddress = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
-        else if (state.data.sellCurrency === 'ETH') walletAddress = '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
-        else if (state.data.sellCurrency === 'USDT') walletAddress = 'T9yD14Nj9j7xAB4dbGeiX9h8unkkhxn\n(TRC20)';
+        let networkInfo = '';
+        try {
+            const { address, network } = await sendbitService.getSystemDepositAddress(state.data.sellCurrency.toLowerCase());
+            if (address) {
+                walletAddress = address;
+                if (network) networkInfo = `\nNetwork: ${network.toUpperCase()}`;
+            } else {
+                walletAddress = '⚠️ Address not available. Please contact support.';
+            }
+        } catch (error) {
+            console.error('Error fetching system wallet address:', error);
+            walletAddress = '⚠️ Could not fetch address. Please try again or contact support.';
+        }
 
         state.step = 'SELL_PAYMENT_EVIDENCE';
         userStates[from] = state;
 
         const msg = `✅ Transfer Funds Here:\n\n` +
-            `*${state.data.sellCurrency} Address:*\n${walletAddress}\n\n` +
+            `*${state.data.sellCurrency} Address:*\n${walletAddress}${networkInfo}\n\n` +
             `Amount: ${state.data.sellAmount} ${state.data.sellCurrency}\n\n` +
             `PLEASE Upload payment evidence (screenshot/image) or type 'done' after transfer.`;
 

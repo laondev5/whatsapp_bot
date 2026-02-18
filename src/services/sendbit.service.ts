@@ -35,8 +35,40 @@ export class SendbitService {
         }
     }
 
-    // Placeholder methods for User/Wallet/Address mapping
-    // Waiting for specific endpoints from documentation
+    /**
+     * Fetch the system wallet for a given currency (btc, eth, usdt).
+     * Uses the /quidax/wallets/{currency} endpoint (no sub-account needed).
+     */
+    async fetchSystemWallet(currency: string) {
+        try {
+            const response = await this.client.get(`/quidax/wallets/${currency}`, {
+                params: { currency }
+            });
+            return response.data;
+        } catch (error) {
+            this.handleError(error, `fetchSystemWallet-${currency}`);
+        }
+    }
+
+    /**
+     * Get the system deposit address for a given currency.
+     * Returns the deposit_address from the system wallet, or null if not available.
+     */
+    async getSystemDepositAddress(currency: string): Promise<{ address: string | null; network: string | null }> {
+        try {
+            const res = await this.fetchSystemWallet(currency.toLowerCase());
+            if (res && res.data) {
+                return {
+                    address: res.data.deposit_address || null,
+                    network: res.data.default_network || null
+                };
+            }
+            return { address: null, network: null };
+        } catch (error) {
+            console.error(`Error fetching system deposit address for ${currency}:`, error);
+            return { address: null, network: null };
+        }
+    }
 
     /**
      * Create a user/sub-account in Sendbit (wrapping Quidax)
